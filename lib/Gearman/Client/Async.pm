@@ -60,7 +60,7 @@ use Gearman::Client::Async::Connection;
 use List::Util qw(first);
 use vars qw($VERSION);
 
-$VERSION = "0.91";
+$VERSION = "0.92";
 
 sub DEBUGGING () { 0 }
 
@@ -160,14 +160,18 @@ sub add_task {
         $js->get_in_ready_state(
                                 # on_ready:
                                 sub {
+                                    my $timer;
                                     if (my $timeout = $task->{timeout}) {
-                                        my $timer = Danga::Socket->AddTimer($timeout, sub {
+                                        $timer = Danga::Socket->AddTimer($timeout, sub {
                                             $task->final_fail('timeout');
                                         });
-                                        $task->set_on_post_hooks(sub {
-                                            $timer->cancel;
-                                        });
                                     }
+                                    $task->set_on_post_hooks(sub {
+                                        $timer->cancel if $timer;
+
+                                        # ALSO clean up our $js (connection's) waiting stuff:
+                                        $js->give_up_on($task);
+                                    });
                                     $js->add_task( $task );
                                     $try_again = undef;
                                 },
